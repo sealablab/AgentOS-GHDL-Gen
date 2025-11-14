@@ -1,6 +1,12 @@
 
 
-# `sys/forge-platform/`
+ `sys/forge-platform-vhdl/`
+# forge-platform-vhdl/README
+the `forge-platform-vhdl` directory is broken down into the following structure
+
+## forge_app_templates
+the authoritative place for the L1-L3 forge app templates (need to be customized)
+
 
 
 
