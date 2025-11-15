@@ -131,6 +131,10 @@ t.txt
 *-todo.txt
 *-todo.txt.md
 
+# Temporary directories
+.trash/
+filenames_Tet/
+
 # ============================================================================
 # External Dependencies (Use Submodules Instead)
 # ============================================================================
