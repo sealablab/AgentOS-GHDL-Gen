@@ -4,6 +4,7 @@
 # Comprehensive patterns for Moku FPGA development with Python tooling
 # Organized by category for clarity and maintainability
 
+wip/
 moku-examples/
 # ============================================================================
 # Python

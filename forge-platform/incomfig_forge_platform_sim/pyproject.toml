@@ -1,0 +1,40 @@
+[project]
+name = "moku-instrument-forge-platform"
+version = "1.0.0"
+description = "Platform simulation infrastructure for Moku custom instrument testing"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Sealab Team" }
+]
+
+dependencies = [
+    "cocotb>=1.8.0",
+    "pyyaml>=6.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-xdist>=3.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["forge_platform"]
+
+[tool.pytest.ini_options]
+python_files = "test_*.py"
+testpaths = ["tests"]
+norecursedirs = [".venv", "sim_build", "__pycache__", ".git"]
+addopts = "-v"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0.0",
+    "pytest-xdist>=3.0.0",
+]

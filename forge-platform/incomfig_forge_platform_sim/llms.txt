@@ -1,0 +1,302 @@
+# forge-platform-simulator - Platform Simulation Infrastructure
+
+> Behavioral models for Moku platform components (oscilloscope, MCC, control registers)
+
+## What is this?
+
+**Platform simulation infrastructure** for testing custom FPGA instruments through CocoTB as if running on actual Moku hardware. This lets you test your CustomInstrument inside a simulated Moku-Go Multi-Instrument-mode
+
+**Key Innovation:** Test through MCC CustomInstrument interface (Control0-15, InputA-D, OutputA-D) with oscilloscope capture - platform-realistic integration testing without physical hardware.
+
+## Core Components
+
+### OscilloscopeSimulator
+
+**Purpose:** Behavioral model of Moku Oscilloscope for waveform capture
+
+**Capabilities:**
+- Time-series data capture from DUT signals (OutputA/B/C/D)
+- Auto-discovery of output channels
+- External channel routing (inter-slot connections)
+- Decimation & sampling rate control
+- Waveform analysis helpers
+
+**Quick Example:**
+```python
+from forge_platform.simulators import OscilloscopeSimulator
+
+scope = OscilloscopeSimulator(dut, {
+    'sample_rate': 125e6,
+    'channels': ['OutputC', 'OutputD']
+})
+
+await scope.run(duration_ns=10000)  # Capture 10 μs
+
+data = scope.get_data('OutputC')
+assert scope.verify_incrementing('OutputC', start_sample=0, count=10)
+```
+
+**Common Use Cases:**
+- FSM state progression verification (OutputC contains 6-bit state)
+- Pulse timing validation (OutputA/B for trigger/intensity pulses)
+- fsm_observer voltage decoding (OutputD voltage stairstep)
+- Waveform pattern matching
+
+### CloudCompileSimulator
+
+**Purpose:** Simulates MCC Control Computer interface for custom instruments
+
+**Capabilities:**
+- Control register application (CR0-CR15)
+- FORGE control scheme validation (CR0[31:29])
+- Network-settable register simulation
+- Status register monitoring (future MCC feature)
+
+**Quick Example:**
+```python
+from forge_platform.simulators import CloudCompileSimulator
+
+mcc = CloudCompileSimulator(dut, {
+    'control_registers': {
+        0: 0xE0000000,  # FORGE: forge_ready|user_enable|clk_enable
+        1: 0x1234,      # BPD trig_out_voltage
+    }
+})
+
+await mcc.apply_control_registers()
+await mcc.set_control_register(1, 0x5678)  # Update
+
+print(mcc.forge_state)  # FORGE control validation
+```
+
+**FORGE Control Validation:**
+```python
+mcc.forge_state = {
+    'forge_ready': True,   # CR0[31]
+    'user_enable': True,   # CR0[30]
+    'clk_enable': True,    # CR0[29]
+    'loader_done': True    # Assumed in simulation
+}
+```
+
+### NetworkCRInterface
+
+**Purpose:** Network-settable control register bank (simulates MCC API)
+
+**Capabilities:**
+- Register read/write with network delay simulation
+- Atomic multi-register updates
+- Register change callbacks
+- FORGE control scheme tracking
+
+### SimulationBackend
+
+**Purpose:** Unified platform simulation orchestration
+
+**Capabilities:**
+- Multi-instrument coordination
+- MokuConfig-driven setup
+- Inter-slot routing
+- Timing synchronization
+
+## Quick Reference
+
+### Installation
+
+```bash
+# From monorepo root
+uv sync
+```
+
+### Imports
+
+```python
+from forge_platform.simulators import (
+    OscilloscopeSimulator,
+    CloudCompileSimulator,
+)
+from forge_platform import (
+    Backend,
+    NetworkCRInterface,
+    ControlRegisterBank,
+)
+```
+
+### Common Patterns
+
+**Pattern 1: Platform Integration Test (BPD Example)**
+```python
+# Setup MCC simulator
+mcc = CloudCompileSimulator(dut, {
+    'control_registers': {
+        0: 0xE0000000,  # FORGE control
+        1: 0b00001111,  # BPD lifecycle: arm_enable, ext_trigger_in, etc.
+        2: 0x1234,      # trig_out_voltage (mV)
+        3: 0x0100,      # trig_out_duration (ns)
+    }
+})
+
+await mcc.apply_control_registers()
+
+# Setup oscilloscope
+scope = OscilloscopeSimulator(dut, {
+    'channels': ['OutputA', 'OutputB', 'OutputC']
+})
+
+# Run test scenario
+await scope.run(duration_ns=50000)
+
+# Analyze results
+assert scope.get_latest_value('OutputC') & 0x3F == 0b000010  # FIRING state
+```
+
+**Pattern 2: FSM Observer Debugging**
+```python
+# OutputD encodes FSM state as voltage (via fsm_observer)
+scope = OscilloscopeSimulator(dut, {'channels': ['OutputD']})
+await scope.run(duration_ns=10000)
+
+voltages = scope.get_data('OutputD')['values']
+# IDLE=0V, ARMED=0.625V, FIRING=1.25V, FAULT=-prev_voltage
+```
+
+**Pattern 3: Waveform Analysis**
+```python
+scope.verify_incrementing('OutputC', start_sample=0, count=10)  # Counter test
+latest = scope.get_latest_value('OutputA')  # Current output state
+value_at_t = scope.get_value_at_sample('OutputC', sample_index=100)
+```
+
+## File Locations
+
+**Python Package:**
+- `forge_platform/__init__.py` - Exports
+- `forge_platform/backend.py` - Backend infrastructure
+- `forge_platform/network_cr.py` - NetworkCRInterface, ControlRegisterBank
+- `forge_platform/simulation_backend.py` - Simulation orchestration
+- `forge_platform/simulators/oscilloscope.py` - OscilloscopeSimulator
+- `forge_platform/simulators/cloud_compile.py` - CloudCompileSimulator
+- `forge_platform/simulators/__init__.py` - Simulator registry
+
+**Documentation:**
+- `README.md` - Getting started
+- `CLAUDE.md` - Design guide (API details, architecture)
+- `llms.txt` - This file (quick reference)
+
+## Integration with FORGE Workflow
+
+**Position:**
+```
+Component Development (Unit Tests):
+  forge-vhdl-component-generator → cocotb-progressive-test-runner
+
+Platform Integration Testing (System Tests):
+  platform-integration-test  ← Uses forge-platform simulators
+```
+
+**Platform tests use:**
+- OscilloscopeSimulator for waveform capture
+- CloudCompileSimulator for MCC interface
+- CustomWrapper VHDL (MCC CustomInstrument entity)
+
+## Common Use Cases
+
+### Use Case 1: BPD FSM State Verification
+
+**Goal:** Verify IDLE → ARMED → FIRING state transitions
+
+**Test Pattern:**
+1. Apply FORGE control (CR0[31:29])
+2. Arm BPD (CR1[0] = arm_enable)
+3. Trigger (CR1[1] = ext_trigger_in)
+4. Capture OutputC (FSM state in bits [5:0])
+5. Verify state progression: 0b000000 → 0b000001 → 0b000010
+
+### Use Case 2: Pulse Timing Validation
+
+**Goal:** Verify BPD generates correct pulse durations
+
+**Test Pattern:**
+1. Set trig_out_duration (CR2)
+2. Set intensity_duration (CR4)
+3. Trigger BPD
+4. Capture OutputA (trig_out_active), OutputB (intensity_out_active)
+5. Measure pulse widths in captured waveform
+
+### Use Case 3: fsm_observer Oscilloscope Debug
+
+**Goal:** Debug FSM states via voltage encoding on OutputD
+
+**Test Pattern:**
+1. Use CustomWrapper_bpd_with_observer.vhd (includes fsm_observer)
+2. Capture OutputD voltage
+3. Decode: IDLE=0V, ARMED=0.625V, FIRING=1.25V, FAULT=negative
+
+## API Cheat Sheet
+
+### OscilloscopeSimulator
+
+| Method | Purpose | Example |
+|--------|---------|---------|
+| `__init__(dut, settings)` | Initialize | `OscilloscopeSimulator(dut, {'channels': ['OutputC']})` |
+| `run(duration_ns)` | Capture data | `await scope.run(10000)` |
+| `get_data(channel)` | Get waveform | `data = scope.get_data('OutputC')` |
+| `get_latest_value(channel)` | Last sample | `latest = scope.get_latest_value('OutputC')` |
+| `get_value_at_sample(channel, idx)` | Sample by index | `val = scope.get_value_at_sample('OutputC', 100)` |
+| `verify_incrementing(channel, start, count)` | Counter test | `assert scope.verify_incrementing('OutputC', 0, 10)` |
+| `add_external_channel(name, handle)` | Route signal | `scope.add_external_channel('InputA', dut.Slot1OutA)` |
+| `clear_data()` | Reset buffer | `scope.clear_data()` |
+| `get_statistics()` | Capture stats | `stats = scope.get_statistics()` |
+
+### CloudCompileSimulator
+
+| Method | Purpose | Example |
+|--------|---------|---------|
+| `__init__(dut, settings)` | Initialize | `CloudCompileSimulator(dut, {'control_registers': {0: 0xE0000000}})` |
+| `apply_control_registers()` | Apply all CRs | `await mcc.apply_control_registers()` |
+| `set_control_register(reg, val)` | Set single CR | `await mcc.set_control_register(1, 0x1234)` |
+| `get_control_register(reg)` | Read CR | `val = mcc.get_control_register(0)` |
+| `validate_forge_ready()` | Check FORGE | `assert mcc.validate_forge_ready()` |
+
+## Testing Best Practices
+
+1. **Use P1 progressive tests** for platform integration (fast, <20 line output)
+2. **Capture minimal duration** (10-50 μs typical, not 1 second)
+3. **Use small sample counts** for waveform validation (10-20 samples for P1)
+4. **Apply FORGE control scheme** (always set CR0[31:29] correctly)
+5. **Verify state transitions** not absolute timing (simulation ≠ hardware timing)
+
+## Dependencies
+
+**Required:**
+- cocotb>=1.8.0 (CocoTB simulation framework)
+- pyyaml>=6.0.0 (MokuConfig parsing)
+
+**Related Packages:**
+- moku-models (platform specifications)
+- forge-vhdl (VHDL components, uses platform simulators for integration tests)
+
+## For AI Agents
+
+**When to use forge-platform:**
+- Testing custom instruments through MCC CustomInstrument interface
+- Oscilloscope waveform capture for FSM debugging
+- Platform integration testing (not unit tests)
+- Control register validation (FORGE control scheme)
+
+**Load priority:**
+- Tier 1: llms.txt (this file) - Always load for platform testing tasks
+- Tier 2: CLAUDE.md - Load for API details, architecture understanding
+- Tier 3: Source code - Load for debugging, extending simulators
+
+**Common tasks:**
+- "Test BPD FSM states via oscilloscope" → Use OscilloscopeSimulator
+- "Validate FORGE control scheme" → Use CloudCompileSimulator
+- "Debug pulse timing" → Use OscilloscopeSimulator waveform analysis
+- "Simulate MCC control register writes" → Use CloudCompileSimulator
+
+---
+
+**Version:** 1.0.0
+**Last Updated:** 2025-11-11
+**Maintained By:** Moku Instrument FORGE Team

@@ -1,0 +1,11 @@
+# [Progressive Testing](__incomfing_stuff/docs/Progressive%20Testing/README.md)
+**Progressive Testing** Is at the heart of the [Agent-Pipeline](../../AI/Agent-Pipeline.md)
+
+**Progressive testing** is the idea that Agents (and humans for that matter) can get farther faster if they start with very basic hardware validation tests and then progressively iterate and refine them.
+
+Towards that end, the [FORGE-V5](../../docs/README.md) system outlines the follow rules defining four phases of progressive tests
+
+
+# See Also
+
+## 

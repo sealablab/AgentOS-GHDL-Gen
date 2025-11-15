@@ -1,14 +1,6 @@
+# ForgeAppPackage
 
-# [[ForgeAppPackage]] 
-**ForgeAppPackage** is a pydantic model that package up a 'Forge' app.
-
-It is basically just:
-
-tworkAppReg** is essentially a vendor agnostic representation of the Control Registers that the moku platform exposes. 
-
-It inherits from the [[StdLogicReg]] base-type, but adds the following:
-
-
+**ForgeAppPackage** model contains metadata about a 'forge application'
 ## Properties
 
 | name                          | req? | descr                           | default   |
