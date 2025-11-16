@@ -1,5 +1,5 @@
 
-# [forge-platform-models](README.md)
+# [forge-platform-models](forge-platform/forge-platform-models/README.md)
 Currently there are only two very simple models.
 - NetworkAppReg
 - StdLogicReg
